@@ -5,7 +5,7 @@ title: Mutex vs Atomic
 
 # Mutex vs Atomic
 
-Some parallel applications do not have any data sharing between threads. Others have sharing between threads that is read-only. But some applications are more complex, and require the coordiation of multiple threads that want to write to the same memory. In these situations, we can reach into our parallel programming toolbox for something like `std::mutex` to make sure only a single thread enters a critical section at a time. However, a mutex is just one tool in our toolbox, and different synchronization mechanisms have different performance characteristics. In this blog post, we'll be compare a few different benchmarks using mutexes and atomics, and analyze the performance results of each.
+Some parallel applications do not have any data sharing between threads. Others have sharing between threads that is read-only. But some applications are more complex, and require the coordination of multiple threads that want to write to the same memory. In these situations, we can reach into our parallel programming toolbox for something like `std::mutex` to make sure only a single thread enters a critical section at a time. However, a mutex is just one tool in our toolbox, and different synchronization mechanisms have different performance characteristics. In this blog post, we'll be comparing a few different benchmarks using mutexes and atomics, and analyze the performance results of each.
 
 ### Link to the source code
 
@@ -60,9 +60,9 @@ What is the value of `shared_val` when it is printed to the screen? Our expected
 
 Each of our increments to `shared_val` really consists of three operations: a read of `shared_val`, an increment of `shared_val`, and a write to `shared_val`. When our two threads try and perform these operations at the same time, they can interleave in nasty ways that give us unexpected results. Consider a simple example where our threads take turns updating `shared_val`.
 
-First, thread 1 reads `shared_val`, then increments it, then writes the value back to memory. Sometime later, thread 2 performs the same 3 operations (uninterrupted), and this goes back and forth until each thread increments `shared_val` 2^16 times. Sounds great! We would expect the final value to be 2^16 + 2^16 (2^17). Now let's consider another scenrio where the threads do not politely take turns.
+First, thread 1 reads `shared_val`, then increments it, then writes the value back to memory. Sometime later, thread 2 performs the same 3 operations (uninterrupted), and this goes back and forth until each thread increments `shared_val` 2^16 times. Sounds great! We would expect the final value to be 2^16 + 2^16 (2^17). Now let's consider another scenario where the threads do not politely take turns.
 
-First, thread 1 reads `shared_val`. Then, thread 2 reads `shared val`. Next, thread 1 increments the value it read, followed by thread 2 incrementing the value it read. Finally, both threads write the value they incremented to memory, and this set of steps repeat until each thread performs 2^16 increments. What is the value now? 2^16, not 2^17! Let's substitute in some values to make this make this more clear.
+First, thread 1 reads `shared_val`. Then, thread 2 reads `shared val`. Next, thread 1 increments the value it read, followed by thread 2 incrementing the value it read. Finally, both threads write the value they incremented to memory, and this set of steps repeat until each thread performs 2^16 increments. What is the value now? 2^16, not 2^17! Let's substitute in some values to make this more clear.
 
 Let's start with `shared_val = 0`. First, both threads read `shared_val`, and find a value of `0`. Next both threads increment this value to `1`. Finally, both threads write the value `1` to memory. Each thread performed an increment, but the final value of `shared_val` doesn't reflect this because of the interleaving!
 
@@ -117,7 +117,7 @@ ThreadSanitizer: reported 1 warnings
 
 #### Race Conditions In a Single Instruction
 
-You may have wondered how there can be any interleaving when our increment in C++ gets translated to a single x86 instruction (like `add` or `inc`). This is beause x86 processors don't actually execute x86 instructions (at least not directly). These instructions get translated into micro-operations (uops), and the uops can be interleaved between threads.
+You may have wondered how there can be any interleaving when our increment in C++ gets translated to a single x86 instruction (like `add` or `inc`). This is because x86 processors don't actually execute x86 instructions (at least not directly). These instructions get translated into micro-operations (uops), and the uops can be interleaved between threads.
 
 Check out [uops.info](https://www.uops.info/) for more information.
 
@@ -145,7 +145,7 @@ Sounds like exactly what we are looking for (a way to serialize access to shared
 
 Let's step through what's going on here. Each iteration of the loop, we use a `std::lock_guard` to lock our `std::mutex`. If a thread finds the `std::mutex` is already locked, it waits for the lock to be released. If a thread finds the `std::mutex` unlocked, it locks the `std::mutex`, increments `shared_val`, then unlocks the mutex (the `std::lock_guard` object locks the mutex when it is created, and releases it when it is destroyed).
 
-Let's take a looks at the low-level assembly:
+Let's take a look at the low-level assembly:
 
 ```
        │20:┌─→mov   %r12,%rdi
@@ -188,7 +188,7 @@ Basically, our increment that requires a read, modify, and write of `shared_val`
 Let's take a look at how we can do this in C++:
 
 ```cpp
-// Function to incrememnt atomic int
+// Function to increment atomic int
 void inc_atomic(std::atomic<int> &shared_val) {
   for (int i = 0; i < (1 << 16); i++) shared_val++;
 }
@@ -222,7 +222,7 @@ atomic_bench/8/real_time           13.4 ms         11.3 ms           52
 
 Way faster than using a mutex (by over 3x in some cases)! But this shouldn't be terribly surprising. When we use a mutex, we're relying on software routines to lock and unlock the mutex. With our atomic operations, we're relying on the underlying hardware mechanisms to make the increment an indivisible operation.
 
-However, it's important to note that what we're profiling here is repeated locks and unlocks for our mutex, and repeated atomic increments for our atomic benchmark. This is largely an artifical scenario, so we should be cautious in thinking cases where we can replace a mutex with an atomic operation will give us a massive speedup.
+However, it's important to note that what we're profiling here is repeated locks and unlocks for our mutex, and repeated atomic increments for our atomic benchmark. This is largely an artificial scenario, so we should be cautious in thinking cases where we can replace a mutex with an atomic operation will give us a massive speedup.
 
 ### Additional Notes
 
@@ -234,7 +234,7 @@ In this section, we'll look at a few different implementations of matrix multipl
 
 ### Statically Mapped Elements
 
-We can parallelize matrix multiplication without without synchronization mechanisms if we have threads work on different parts of the output matrix. Here is an example implementation that performs some cache tiling for even better performance:
+We can parallelize matrix multiplication without synchronization mechanisms if we have threads work on different parts of the output matrix. Here is an example implementation that performs some cache tiling for even better performance:
 
 ```cpp
  // Blocked column parallel implementation w/o atomic
@@ -317,7 +317,7 @@ Let's first take a look at an implementation with mutexes:
  }
 ```
 
-In the outer-most loop, each thread gets a chunk of 16 columns to solve from our `fetch_and_add` routine. This routine takes the current position (`pos`), saves the current value, increments `pos` by 16, and returns the previously value. Access to `pos` is restricted using a `std::mutex` and `std::lock_guard`. You can think of `pos` as our position in the queue of or work items (which are really just chunks of the output matrix we are solving).
+In the outer-most loop, each thread gets a chunk of 16 columns to solve from our `fetch_and_add` routine. This routine takes the current position (`pos`), saves the current value, increments `pos` by 16, and returns the previously value. Access to `pos` is restricted using a `std::mutex` and `std::lock_guard`. You can think of `pos` as our position in the queue of work items (which are really just chunks of the output matrix we are solving).
 
 Let's measure the performance:
 
