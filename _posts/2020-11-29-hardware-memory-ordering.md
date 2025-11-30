@@ -5,7 +5,7 @@ title: Hardware Memory Reordering
 
 # Hardware Memory Reordering
 
-Even if we use software memory barriers to prevent the compiler from reordering memory accesses in our generated assembly, they still might be reordered by the hardware itself during execution. How these accesses can be be reordered is a function of the processor's memory consistency model.
+Even if we use software memory barriers to prevent the compiler from reordering memory accesses in our generated assembly, they still might be reordered by the hardware itself during execution. How these accesses can be reordered is a function of the processor's memory consistency model.
 
 In this blog post, we'll be looking at an example of x86 Store-Load reordering in an implementation of Peterson's algorithm, and how we can prevent it using hardware barriers.
 
